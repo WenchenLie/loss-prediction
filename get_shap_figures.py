@@ -1,10 +1,9 @@
 import shap
+from pathlib import Path
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
-import os
-from pathlib import Path
 
 
 LABEL_NAMES = ['loss1_mean']
@@ -25,7 +24,9 @@ plt.rcParams['axes.unicode_minus'] = False
 plt.rcParams['xtick.labelsize'] = FONTSIZE 
 plt.rcParams['ytick.labelsize'] = FONTSIZE
 
-def plot_shap(n_story: int, feature_names: list[str], model_name: str, label_to_plot: str, output_dir: Path = Path('ml_output/Regression'), annotation_text: str = ""):
+def plot_shap(n_story: int, step: str, feature_names: list[str], model_name: str,
+              label_to_plot: str, output_dir: Path = Path('ml_output/Regression'),
+              annotation_text: str = ""):
     df_x = pd.read_csv(output_dir / f'{model_name}_{n_story}S_x_test.csv', index_col=0)
     df_y = pd.read_csv(output_dir / f'{model_name}_{n_story}S_y_test.csv', index_col=0)
     x_test = df_x.to_numpy()
@@ -81,7 +82,13 @@ def plot_shap(n_story: int, feature_names: list[str], model_name: str, label_to_
     ax2.set_xlim(0, max(sorted_importance) * 1.2)
     ax2.tick_params(axis='x', direction='in', width=1.5, length=5, labelsize=FONTSIZE, top=True, labeltop=True, bottom=False, labelbottom=False)
     
-    ax1.set_xlabel(r'SHAP value (impact on $\mathit{LR}$)', fontsize=FONTSIZE, labelpad=2)
+    if step == 'Stage-I':
+        label = r'SHAP value (impact on probability)'
+    elif step == 'Stage-II':
+        label = r'SHAP value (impact on $\mathit{LR}$)'
+    else:
+        raise ValueError(f'Step should be "Stage-I" or "Stage-II".')
+    ax1.set_xlabel(label, fontsize=FONTSIZE, labelpad=2)
     ax1.tick_params(axis='x', direction='in', width=1.5, length=5, labelsize=FONTSIZE, bottom=True, labelbottom=True, top=False, labeltop=False)
     
     ax1.tick_params(axis='y', length=0, labelsize=FONTSIZE, left=False)
@@ -129,7 +136,7 @@ if __name__ == "__main__":
             feature_names = FEATURE_NAMES[str(n_story)]
             output_dir = Path(f'ml_output/{case_}')
             No = ['a', 'b', 'c', 'd', 'e', 'f'][i]
-            step = 'Step-I' if case_ == 'Classification' else 'Step-II'
+            step = 'Stage-I' if case_ == 'Classification' else 'Stage-II'
             annotation = f'({No}) {step} ({n_story}-story)'
-            plot_shap(n_story, feature_names, 'XGBoost', label_to_plot='loss1_mean', annotation_text=annotation, output_dir=output_dir)
+            plot_shap(n_story, step, feature_names, 'XGBoost', label_to_plot='loss1_mean', annotation_text=annotation, output_dir=output_dir)
             i += 1
