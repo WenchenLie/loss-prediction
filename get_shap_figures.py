@@ -33,13 +33,21 @@ def plot_shap(n_story: int, step: str, feature_names: list[str], model_name: str
     model_type = 'classifiers' if step == 'Stage-I' else 'regressors'
     saved_model = joblib.load(Path('models') / model_type / f'{model_name}_{n_story}S.joblib')
     x_scaler = saved_model['x_scaler']
-    explainer = shap.TreeExplainer(
-        saved_model['model'],
-        data=x_scaler.transform(x_train),
-        feature_perturbation='interventional',
-        model_output='probability' if step == 'Stage-I' else 'raw',
-    )
-    shap_values = explainer(x_scaler.transform(x_test)).values
+    background = shap.sample(x_scaler.transform(x_train), 100, random_state=0)
+    xs_test = x_scaler.transform(x_test)
+
+    if step == 'Stage-I':
+        # Explain class-1 (code-compliant) probability directly, without log-odds rescaling.
+        explainer = shap.ExactExplainer(
+            saved_model['model'].predict_proba, background, link=shap.links.identity,
+        )
+        shap_values = explainer(xs_test).values[..., 1]
+    else:
+        explainer = shap.TreeExplainer(
+            saved_model['model'], background,
+            feature_perturbation='interventional', model_output='raw',
+        )
+        shap_values = explainer(xs_test).values
     
     if len(LABEL_NAMES) > 1:
         idx = LABEL_NAMES.index(label_to_plot)
@@ -48,6 +56,8 @@ def plot_shap(n_story: int, step: str, feature_names: list[str], model_name: str
     if step == 'Stage-II':
         # SHAP contributions scale with the output standard deviation; no mean is added.
         shap_values = shap_values * saved_model['y_scaler'].scale_[LABEL_NAMES.index(label_to_plot)]
+
+    np.savetxt(output_dir / f'shap_values_{model_name}_{n_story}S_{label_to_plot}_original_scale.txt', shap_values)
         
     feature_importance = np.mean(np.abs(shap_values), axis=0)
     sort_inds = np.argsort(feature_importance)
