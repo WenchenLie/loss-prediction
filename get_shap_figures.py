@@ -1,4 +1,5 @@
 import shap
+import joblib
 from pathlib import Path
 import pandas as pd
 import numpy as np
@@ -27,15 +28,26 @@ plt.rcParams['ytick.labelsize'] = FONTSIZE
 def plot_shap(n_story: int, step: str, feature_names: list[str], model_name: str,
               label_to_plot: str, output_dir: Path = Path('ml_output/Regression'),
               annotation_text: str = ""):
-    df_x = pd.read_csv(output_dir / f'{model_name}_{n_story}S_x_test.csv', index_col=0)
-    df_y = pd.read_csv(output_dir / f'{model_name}_{n_story}S_y_test.csv', index_col=0)
-    x_test = df_x.to_numpy()
-    y_test = df_y[f'Actual_{label_to_plot}'].to_numpy()
-    shap_values: np.ndarray = np.loadtxt(output_dir / f'shap_values_{model_name}_{n_story}S.txt')
+    x_train = pd.read_csv(output_dir / f'{model_name}_{n_story}S_x_train.csv', index_col=0)[feature_names].to_numpy()
+    x_test = pd.read_csv(output_dir / f'{model_name}_{n_story}S_x_test.csv', index_col=0)[feature_names].to_numpy()
+    model_type = 'classifiers' if step == 'Stage-I' else 'regressors'
+    saved_model = joblib.load(Path('models') / model_type / f'{model_name}_{n_story}S.joblib')
+    x_scaler = saved_model['x_scaler']
+    explainer = shap.TreeExplainer(
+        saved_model['model'],
+        data=x_scaler.transform(x_train),
+        feature_perturbation='interventional',
+        model_output='probability' if step == 'Stage-I' else 'raw',
+    )
+    shap_values = explainer(x_scaler.transform(x_test)).values
     
     if len(LABEL_NAMES) > 1:
         idx = LABEL_NAMES.index(label_to_plot)
         shap_values = shap_values[:, :, idx]
+
+    if step == 'Stage-II':
+        # SHAP contributions scale with the output standard deviation; no mean is added.
+        shap_values = shap_values * saved_model['y_scaler'].scale_[LABEL_NAMES.index(label_to_plot)]
         
     feature_importance = np.mean(np.abs(shap_values), axis=0)
     sort_inds = np.argsort(feature_importance)
